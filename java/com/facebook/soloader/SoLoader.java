@@ -1382,7 +1382,7 @@ public class SoLoader {
   }
 
   /**
-   * Add a new source of native libraries. SoLoader consults the new source before any
+   * Add a new source of native libraries. SoLoader consults the new source *before* any
    * currently-installed source.
    *
    * @param extraSoSource The SoSource to install
@@ -1399,6 +1399,29 @@ public class SoLoader {
       sSoSources = newSoSources;
       sSoSourcesVersion.getAndIncrement();
       LogUtil.d(TAG, "Prepended to SO sources: " + extraSoSource);
+    } finally {
+      sSoSourcesLock.writeLock().unlock();
+    }
+  }
+
+  /**
+   * Add a new source of native libraries. SoLoader consults the new source *after* any
+   * currently-installed source.
+   *
+   * @param extraSoSource The SoSource to install
+   * @throws IOException IOException
+   */
+  public static void appendSoSource(SoSource extraSoSource) throws IOException {
+    sSoSourcesLock.writeLock().lock();
+    try {
+      assertInitialized();
+      extraSoSource.prepare(makePrepareFlags());
+      SoSource[] newSoSources = new SoSource[sSoSources.length + 1];
+      System.arraycopy(sSoSources, 0, newSoSources, 0, sSoSources.length);
+      newSoSources[sSoSources.length] = extraSoSource;
+      sSoSources = newSoSources;
+      sSoSourcesVersion.getAndIncrement();
+      LogUtil.d(TAG, "Appended to SO sources: " + extraSoSource);
     } finally {
       sSoSourcesLock.writeLock().unlock();
     }
