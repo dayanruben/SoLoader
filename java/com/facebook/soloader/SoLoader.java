@@ -472,7 +472,7 @@ public class SoLoader {
       }
       sSoSources = finalSoSources;
       sSoSourcesVersion.getAndIncrement();
-      LogUtil.i(TAG, "init finish: " + sSoSources.length + " SO sources prepared");
+      LogUtil.d(TAG, "init finish: " + sSoSources.length + " SO sources prepared");
     } finally {
       sSoSourcesLock.writeLock().unlock();
     }
