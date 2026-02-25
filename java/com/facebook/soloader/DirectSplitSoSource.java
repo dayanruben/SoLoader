@@ -33,23 +33,23 @@ import javax.annotation.Nullable;
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class DirectSplitSoSource extends SoSource {
 
-  protected final String mSplitName;
+  protected final Split mSplit;
 
   protected final @Nullable String mFeatureName;
   protected @Nullable Map<String, Manifest.Library> mLibs = null;
 
   public DirectSplitSoSource(String featureName) {
-    this(featureName, Splits.findAbiSplit(featureName));
+    this(featureName, Split.findAbiSplit(featureName));
   }
 
-  public DirectSplitSoSource(String featureName, String splitName) {
+  public DirectSplitSoSource(String featureName, Split split) {
     mFeatureName = featureName;
-    mSplitName = splitName;
+    mSplit = split;
   }
 
-  public DirectSplitSoSource(String splitName, Manifest manifest) {
+  public DirectSplitSoSource(Split split, Manifest manifest) {
     mFeatureName = null;
-    mSplitName = splitName;
+    mSplit = split;
     installManifest(manifest);
   }
 
@@ -114,7 +114,7 @@ public class DirectSplitSoSource extends SoSource {
   private void loadDependencies(
       Manifest.Library lib, int loadFlags, StrictMode.ThreadPolicy threadPolicy)
       throws IOException {
-    try (ZipFile apk = new ZipFile(getSplitPath())) {
+    try (ZipFile apk = new ZipFile(mSplit.getPath())) {
       try (ElfByteChannel bc = getElfByteChannel(apk, lib)) {
         NativeDeps.loadDependencies(lib.name, bc, loadFlags, threadPolicy);
       }
@@ -150,11 +150,7 @@ public class DirectSplitSoSource extends SoSource {
   }
 
   private String getLibraryPath(Manifest.Library lib) {
-    return getSplitPath() + "!/lib/" + SoLoader.getPrimaryAbi() + "/" + lib.name;
-  }
-
-  protected String getSplitPath() {
-    return Splits.getSplitPath(mSplitName);
+    return mSplit.getLibraryPath(SoLoader.getPrimaryAbi(), lib.name);
   }
 
   @Override
@@ -173,7 +169,7 @@ public class DirectSplitSoSource extends SoSource {
   }
 
   protected String[] getLibraryDependencies(Manifest.Library lib) throws IOException {
-    try (ZipFile apk = new ZipFile(getSplitPath())) {
+    try (ZipFile apk = new ZipFile(mSplit.getPath())) {
       try (ElfByteChannel bc = getElfByteChannel(apk, lib)) {
         return NativeDeps.getDependencies(lib.name, bc);
       }
@@ -192,11 +188,11 @@ public class DirectSplitSoSource extends SoSource {
 
   @Override
   public void addToLdLibraryPath(Collection<String> paths) {
-    paths.add(getSplitPath() + "!/lib/" + SoLoader.getPrimaryAbi() + "/");
+    paths.add(mSplit.getLibraryDirectory(SoLoader.getPrimaryAbi()));
   }
 
   @Override
   public String getName() {
-    return "DirectSplitSoSource[" + mSplitName + "]";
+    return "DirectSplitSoSource[" + mSplit + "]";
   }
 }
