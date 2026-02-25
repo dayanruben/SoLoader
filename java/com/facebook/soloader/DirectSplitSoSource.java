@@ -63,8 +63,7 @@ public class DirectSplitSoSource extends SoSource {
     if (mFeatureName == null) {
       throw new NullPointerException();
     }
-    try (InputStream is =
-        SoLoader.sApplicationContext.getAssets().open(mFeatureName + ".soloader-manifest")) {
+    try (InputStream is = mSplit.openLib("lib" + mFeatureName + ".soloader-manifest.so")) {
       installManifest(Manifest.read(is));
     }
   }

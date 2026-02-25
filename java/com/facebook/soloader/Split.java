@@ -16,8 +16,13 @@
 
 package com.facebook.soloader;
 
+import android.content.res.AssetFileDescriptor;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * Represents an APK split that contains native libraries. There are two kinds:
@@ -29,6 +34,41 @@ import java.io.IOException;
  * </ul>
  */
 public abstract class Split {
+
+  /** An InputStream that closes an associated ZipFile when the stream is closed. */
+  private static class ZipEntryInputStream extends InputStream {
+    private final InputStream mDelegate;
+    private final ZipFile mZipFile;
+
+    ZipEntryInputStream(InputStream delegate, ZipFile zipFile) {
+      mDelegate = delegate;
+      mZipFile = zipFile;
+    }
+
+    @Override
+    public int read() throws IOException {
+      return mDelegate.read();
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      return mDelegate.read(b, off, len);
+    }
+
+    @Override
+    public int available() throws IOException {
+      return mDelegate.available();
+    }
+
+    @Override
+    public void close() throws IOException {
+      try {
+        mDelegate.close();
+      } finally {
+        mZipFile.close();
+      }
+    }
+  }
 
   /** Returns the file system path to the split APK. */
   public abstract String getPath();
@@ -46,6 +86,34 @@ public abstract class Split {
   /** Returns the library directory path inside this split: {@code <path>!/lib/<abi>/}. */
   public String getLibraryDirectory(String abi) {
     return getEntryPath("lib/" + abi + "/");
+  }
+
+  /**
+   * Opens a library from this split and returns an {@link InputStream} to read its contents. The
+   * library is looked up under {@code lib/<abi>/<soName>} inside the archive. Uses the primary ABI.
+   */
+  public InputStream openLib(String soName) throws IOException {
+    return openLib(SoLoader.getPrimaryAbi(), soName);
+  }
+
+  /**
+   * Opens a library from this split and returns an {@link InputStream} to read its contents. The
+   * library is looked up under {@code lib/<abi>/<soName>} inside the archive.
+   */
+  public InputStream openLib(String abi, String soName) throws IOException {
+    ZipFile zipFile = new ZipFile(getPath());
+    String entryName = "lib/" + abi + "/" + soName;
+    ZipEntry entry = zipFile.getEntry(entryName);
+    if (entry == null) {
+      zipFile.close();
+      throw new FileNotFoundException("Entry not found: " + entryName + " in " + getPath());
+    }
+    InputStream is = zipFile.getInputStream(entry);
+    if (is == null) {
+      zipFile.close();
+      throw new IOException("Failed to open entry: " + entryName + " in " + getPath());
+    }
+    return new ZipEntryInputStream(is, zipFile);
   }
 
   /** Finds the installed ABI split for the given feature. */
@@ -80,6 +148,22 @@ public abstract class Split {
     @Override
     public String getPath() {
       return Splits.getSplitPath(mSplitName);
+    }
+
+    private boolean isBaseFeature() {
+      return "base.apk".equals(mSplitName) || mSplitName.startsWith("split_config.");
+    }
+
+    @Override
+    public InputStream openLib(String abi, String soName) throws IOException {
+      if (isBaseFeature()) {
+        AssetFileDescriptor afd =
+            SoLoader.getApplicationContext()
+                .getAssets()
+                .openNonAssetFd("lib/" + abi + "/" + soName);
+        return afd.createInputStream();
+      }
+      return super.openLib(abi, soName);
     }
 
     @Override
