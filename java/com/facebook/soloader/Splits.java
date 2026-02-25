@@ -68,6 +68,14 @@ public class Splits {
     return BASE_APK;
   }
 
+  public static String findAbiSplitPath(String feature) {
+    return findAbiSplitPath(feature, SoLoader.getApplicationInfo());
+  }
+
+  public static String findAbiSplitPath(String feature, ApplicationInfo aInfo) {
+    return getSplitPath(findAbiSplit(feature, aInfo), aInfo);
+  }
+
   public static String getSplitPath(String splitFileName) {
     return getSplitPath(splitFileName, SoLoader.getApplicationInfo());
   }
@@ -141,14 +149,6 @@ public class Splits {
       return name.substring(6, name.length() - 4);
     }
     return null;
-  }
-
-  public static String getFullLibraryPath(String libraryName, String splitName) {
-    return getFullLibraryPath(libraryName, splitName, SoLoader.getPrimaryAbi());
-  }
-
-  public static String getFullLibraryPath(String libraryName, String splitName, String abi) {
-    return getSplitPath(splitName) + "!/lib/" + abi + "/" + libraryName;
   }
 
   @TargetApi(Build.VERSION_CODES.O)

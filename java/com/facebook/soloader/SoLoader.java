@@ -478,7 +478,7 @@ public class SoLoader {
     }
   }
 
-  static String getPrimaryAbi() {
+  public static String getPrimaryAbi() {
     if (sPrimaryAbi == null) {
       throw new IllegalStateException("no primary abi");
     }
