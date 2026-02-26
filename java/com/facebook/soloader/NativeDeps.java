@@ -70,6 +70,8 @@ public final class NativeDeps {
         }
       };
 
+  public static final long CTOR_PAGE_SIZE = 4096;
+
   public static void loadDependencies(
       String soName, ElfByteChannel bc, int loadFlags, StrictMode.ThreadPolicy threadPolicy)
       throws IOException {
@@ -392,6 +394,10 @@ public final class NativeDeps {
     for (int byteOffset = depsOffset;
         byteOffset < sEncodedDeps.length && ((nextByte = sEncodedDeps[byteOffset]) != '\n');
         byteOffset++) {
+      if (nextByte == ';') {
+        // Constructor pages section starts here, stop parsing deps
+        break;
+      }
       if (nextByte == ' ') {
         if (hasDep) {
           String dep = getLibString(depIndex);
@@ -453,6 +459,94 @@ public final class NativeDeps {
     }
 
     return getDepsForLibAtOffset(offset, soName.length());
+  }
+
+  /**
+   * Returns the offsets of pages in the native library reachable from static initializers. Format
+   * after ';' in deps file: <delta0> <delta1> <delta2> ... Page indices are delta-encoded. Returns
+   * null if no constructor pages are available.
+   *
+   * @return array of file offsets (page_index * CTOR_PAGE_SIZE), or null
+   */
+  @Nullable
+  public static long[] getConstructorPageOffsets(String soName) {
+    if (!sInitialized) {
+      return null;
+    }
+
+    if (soName.length() <= LIB_PREFIX_SUFFIX_LEN) {
+      return null;
+    }
+
+    int offset = getOffsetForLib(soName);
+    if (offset == -1) {
+      return null;
+    }
+
+    return parseConstructorPages(offset, soName.length());
+  }
+
+  // Finds the ';' separator after the dependency indices for a library line,
+  // then parses delta-encoded page indices: delta0 delta1 ...
+  // Returns file offsets (page_index * CTOR_PAGE_SIZE) after delta-decoding.
+  @Nullable
+  private static long[] parseConstructorPages(int libOffset, int soNameLength) {
+    byte[] encodedDeps = sEncodedDeps;
+    if (encodedDeps == null) {
+      return null;
+    }
+    int pos = libOffset + soNameLength - LIB_PREFIX_SUFFIX_LEN;
+
+    // Find end of this line
+    int endPos = pos;
+    while (endPos < encodedDeps.length && encodedDeps[endPos] != '\n') {
+      endPos++;
+    }
+
+    // Scan to ';'
+    while (pos < endPos && encodedDeps[pos] != ';') {
+      pos++;
+    }
+    if (pos >= endPos) {
+      return null; // no constructor pages section
+    }
+    pos++; // skip ';'
+
+    // Parse delta-encoded page indices until newline
+    List<Integer> values = new ArrayList<>();
+    int val = 0;
+    boolean hasVal = false;
+    while (pos < endPos) {
+      int b = encodedDeps[pos];
+      if (b == ' ') {
+        if (hasVal) {
+          values.add(val);
+          val = 0;
+          hasVal = false;
+        }
+      } else if (b >= '0' && b <= '9') {
+        val = val * 10 + (b - '0');
+        hasVal = true;
+      } else {
+        return null;
+      }
+      pos++;
+    }
+    if (hasVal) {
+      values.add(val);
+    }
+
+    if (values.isEmpty()) {
+      return null;
+    }
+
+    long[] offsets = new long[values.size()];
+    long pageIndex = 0;
+    for (int i = 0; i < values.size(); i++) {
+      pageIndex += values.get(i);
+      offsets[i] = pageIndex * CTOR_PAGE_SIZE;
+    }
+    return offsets;
   }
 
   private static void verifyUninitialized() {
