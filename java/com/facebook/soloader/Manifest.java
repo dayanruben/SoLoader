@@ -103,11 +103,15 @@ public class Manifest {
       ZipEntry entry = entries.nextElement();
       String name = entry.getName();
       if (name.startsWith(prefix) && name.endsWith(".so")) {
+        String libName = name.substring(prefix.length());
+        if (libName.startsWith("lib_soa_")) {
+          continue; // Skip SO archive entries
+        }
         int flags = Library.FLAG_UNKNOWN_DEPS;
         if (entry.getMethod() != ZipEntry.STORED) {
           flags |= Library.FLAG_COMPRESSED;
         }
-        libs.add(new Library(name.substring(prefix.length()), flags));
+        libs.add(new Library(libName, flags));
       }
     }
 
