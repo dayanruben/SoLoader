@@ -217,7 +217,7 @@ public class SoLoader {
   public static final int SOLOADER_ENABLE_SYSTEMLOAD_WRAPPER_SOSOURCE = (1 << 9);
 
   /** Experiment ONLY: skip custom SoSources for base.apk and rely on System.loadLibrary calls. */
-  public static final int SOLOADER_ENABLE_BASE_APK_SPLIT_SOURCE = (1 << 10);
+  public static final int SOLOADER_ENABLE_DIRECT_SPLIT_SO_SOURCE = (1 << 10);
 
   /** Experiment ONLY: skip DSONotFound error recovery for back up so source */
   public static final int SOLOADER_ENABLE_BACKUP_SOSOURCE_DSONOTFOUND_ERROR_RECOVERY = (1 << 11);
@@ -424,7 +424,7 @@ public class SoLoader {
       final boolean isEnabledSystemLoadWrapper =
           (flags & SOLOADER_ENABLE_SYSTEMLOAD_WRAPPER_SOSOURCE) != 0;
       final boolean isEnabledBaseApkSplitSource =
-          (flags & SOLOADER_ENABLE_BASE_APK_SPLIT_SOURCE) != 0;
+          (flags & SOLOADER_ENABLE_DIRECT_SPLIT_SO_SOURCE) != 0;
       final boolean systemSoSourceOnly = (flags & SOLOADER_SYSTEM_SOSOURCE_ONLY) != 0;
       if (isEnabledSystemLoadWrapper) {
         addSystemLoadWrapperSoSource(context, soSources);
