@@ -222,7 +222,7 @@ public class SoLoader {
   /** Experiment ONLY: skip DSONotFound error recovery for back up so source */
   public static final int SOLOADER_ENABLE_BACKUP_SOSOURCE_DSONOTFOUND_ERROR_RECOVERY = (1 << 11);
 
-  public static final int SOLOADER_IMPLICIT_DEPENDENCIES_TEST = (1 << 12);
+  public static final int SOLOADER_IMPLICIT_DEPENDENCIES = (1 << 12);
 
   /** Only initialize system SoSource */
   public static final int SOLOADER_SYSTEM_SOSOURCE_ONLY = (1 << 13);
@@ -460,7 +460,7 @@ public class SoLoader {
                 context,
                 soSources,
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
-                    && (flags & SOLOADER_IMPLICIT_DEPENDENCIES_TEST) != 0);
+                    && (flags & SOLOADER_IMPLICIT_DEPENDENCIES) != 0);
           }
         }
       }
