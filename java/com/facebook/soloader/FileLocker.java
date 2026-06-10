@@ -27,12 +27,21 @@ public final class FileLocker implements Closeable {
 
   private final FileOutputStream mLockFileOutputStream;
   private final @Nullable FileLock mLock;
+  private final @Nullable Runnable mOnClose;
 
   public static FileLocker lock(File lockFile) throws IOException {
-    return new FileLocker(lockFile);
+    return new FileLocker(lockFile, null);
+  }
+
+  public static FileLocker lock(File lockFile, @Nullable Runnable onClose) throws IOException {
+    return new FileLocker(lockFile, onClose);
   }
 
   private FileLocker(File lockFile) throws IOException {
+    this(lockFile, null);
+  }
+
+  private FileLocker(File lockFile, @Nullable Runnable onClose) throws IOException {
     mLockFileOutputStream = new FileOutputStream(lockFile);
     FileLock lock = null;
     try {
@@ -44,6 +53,7 @@ public final class FileLocker implements Closeable {
     }
 
     mLock = lock;
+    mOnClose = onClose;
   }
 
   @Override
@@ -53,7 +63,13 @@ public final class FileLocker implements Closeable {
         mLock.release();
       }
     } finally {
-      mLockFileOutputStream.close();
+      try {
+        mLockFileOutputStream.close();
+      } finally {
+        if (mOnClose != null) {
+          mOnClose.run();
+        }
+      }
     }
   }
 }

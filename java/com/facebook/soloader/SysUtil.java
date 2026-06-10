@@ -455,7 +455,7 @@ public final class SysUtil {
   }
 
   public static FileLocker getFileLocker(File lockFileName) throws IOException {
-    return FileLocker.lock(lockFileName);
+    return FileLockManager.lock(lockFileName);
   }
 
   /**
