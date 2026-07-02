@@ -472,6 +472,88 @@ public final class NativeDeps {
   }
 
   /**
+   * Returns load-time prefetch ranges for a library as interleaved [offset0, length0, offset1,
+   * length1, ...] in bytes, or null if not present. Ranges are emitted in load-time access order
+   * (metadata, constructor .text, .rodata). Format after ';' in the deps file: (start_page
+   * num_pages) integer pairs.
+   */
+  @Nullable
+  public static long[] getPrefetchRanges(String soName) {
+    if (!sInitialized) {
+      return null;
+    }
+    if (soName.length() <= LIB_PREFIX_SUFFIX_LEN) {
+      return null;
+    }
+    int offset = getOffsetForLib(soName);
+    if (offset == -1) {
+      return null;
+    }
+    return parsePrefetchRanges(offset, soName.length());
+  }
+
+  // Parses the ranges section after ';': pairs of (start_page num_pages). Returns interleaved
+  // [offset0, length0, ...] in bytes, or null if there is no ranges section.
+  @Nullable
+  private static long[] parsePrefetchRanges(int libOffset, int soNameLength) {
+    byte[] encodedDeps = sEncodedDeps;
+    if (encodedDeps == null) {
+      return null;
+    }
+    int pos = libOffset + soNameLength - LIB_PREFIX_SUFFIX_LEN;
+
+    int endPos = pos;
+    while (endPos < encodedDeps.length && encodedDeps[endPos] != '\n') {
+      endPos++;
+    }
+
+    while (pos < endPos && encodedDeps[pos] != ';') {
+      pos++;
+    }
+    if (pos >= endPos) {
+      return null; // no prefetch section
+    }
+    pos++; // skip ';'
+
+    List<Integer> values = new ArrayList<>();
+    int val = 0;
+    boolean hasVal = false;
+    while (pos < endPos) {
+      int b = encodedDeps[pos];
+      if (b == ' ') {
+        if (hasVal) {
+          values.add(val);
+          val = 0;
+          hasVal = false;
+        }
+      } else if (b >= '0' && b <= '9') {
+        val = val * 10 + (b - '0');
+        if (val < 0) {
+          return null; // overflow on a malformed/corrupt deps file
+        }
+        hasVal = true;
+      } else {
+        return null;
+      }
+      pos++;
+    }
+    if (hasVal) {
+      values.add(val);
+    }
+
+    if (values.isEmpty() || (values.size() % 2) != 0) {
+      return null;
+    }
+
+    long[] ranges = new long[values.size()]; // [offset0, length0, offset1, length1, ...]
+    for (int i = 0; i < values.size(); i += 2) {
+      ranges[i] = (long) values.get(i) * CTOR_PAGE_SIZE; // start offset
+      ranges[i + 1] = (long) values.get(i + 1) * CTOR_PAGE_SIZE; // length
+    }
+    return ranges;
+  }
+
+  /**
    * Returns the offsets of pages in the native library reachable from static initializers. Format
    * after ';' in deps file: <delta0> <delta1> <delta2> ... Page indices are delta-encoded. Returns
    * null if no constructor pages are available.
