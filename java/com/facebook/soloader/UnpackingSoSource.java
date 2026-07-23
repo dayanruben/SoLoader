@@ -202,7 +202,7 @@ public abstract class UnpackingSoSource extends DirectorySoSource implements Asy
         SysUtil.dumbDelete(dsoFileName);
         throw e;
       } finally {
-        if (dsoFileName.exists() && !dsoFileName.setWritable(false)) {
+        if (dsoFileName.exists() && !dsoFileName.setReadOnly()) {
           LogUtil.e(
               SoLoader.TAG,
               "Error removing "
@@ -456,7 +456,7 @@ public abstract class UnpackingSoSource extends DirectorySoSource implements Asy
         }
       }
     } finally {
-      if (soDirectory.canWrite() && !soDirectory.setWritable(false)) {
+      if (soDirectory.canWrite() && !soDirectory.setReadOnly()) {
         throw new IOException(
             "error removing " + soDirectory.getCanonicalPath() + " write permission");
       }
