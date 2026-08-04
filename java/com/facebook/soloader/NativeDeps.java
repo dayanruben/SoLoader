@@ -474,11 +474,14 @@ public final class NativeDeps {
   /**
    * Returns load-time prefetch ranges for a library as interleaved [offset0, length0, offset1,
    * length1, ...] in bytes, or null if not present. Ranges are emitted in load-time access order
-   * (metadata, constructor .text, .rodata). Format after ';' in the deps file: (start_page
-   * num_pages) integer pairs.
+   * (metadata, .rodata, then constructor .text).
+   *
+   * <p>Format in the deps file: ';' introduces (start_page num_pages) integer pairs, and ':'
+   * introduces the constructor .text pairs. Constructor ranges are only included when
+   * includeConstructorRanges is set, so they can be prefetched or skipped independently.
    */
   @Nullable
-  public static long[] getPrefetchRanges(String soName) {
+  public static long[] getPrefetchRanges(String soName, boolean includeConstructorRanges) {
     if (!sInitialized) {
       return null;
     }
@@ -489,13 +492,15 @@ public final class NativeDeps {
     if (offset == -1) {
       return null;
     }
-    return parsePrefetchRanges(offset, soName.length());
+    return parsePrefetchRanges(offset, soName.length(), includeConstructorRanges);
   }
 
-  // Parses the ranges section after ';': pairs of (start_page num_pages). Returns interleaved
-  // [offset0, length0, ...] in bytes, or null if there is no ranges section.
+  // Parses the ranges section after ';': pairs of (start_page num_pages), with the constructor
+  // .text pairs following a ':'. Returns interleaved [offset0, length0, ...] in bytes, or null if
+  // there is no ranges section.
   @Nullable
-  private static long[] parsePrefetchRanges(int libOffset, int soNameLength) {
+  private static long[] parsePrefetchRanges(
+      int libOffset, int soNameLength, boolean includeConstructorRanges) {
     byte[] encodedDeps = sEncodedDeps;
     if (encodedDeps == null) {
       return null;
@@ -518,6 +523,7 @@ public final class NativeDeps {
     List<Integer> values = new ArrayList<>();
     int val = 0;
     boolean hasVal = false;
+    boolean seenCtorMarker = false;
     while (pos < endPos) {
       int b = encodedDeps[pos];
       if (b == ' ') {
@@ -525,6 +531,22 @@ public final class NativeDeps {
           values.add(val);
           val = 0;
           hasVal = false;
+        }
+      } else if (b == ':') {
+        if (seenCtorMarker) {
+          return null; // more than one constructor marker: corrupt
+        }
+        if (hasVal) {
+          values.add(val);
+          val = 0;
+          hasVal = false;
+        }
+        if ((values.size() % 2) != 0) {
+          return null; // marker split a (start_page num_pages) pair
+        }
+        seenCtorMarker = true;
+        if (!includeConstructorRanges) {
+          break;
         }
       } else if (b >= '0' && b <= '9') {
         val = val * 10 + (b - '0');
