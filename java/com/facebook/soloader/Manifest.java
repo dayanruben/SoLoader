@@ -57,15 +57,15 @@ public class Manifest {
     }
 
     @Override
-    public boolean equals(@Nullable Object o) {
-      if (this == o) {
+    public boolean equals(@Nullable Object other) {
+      if (this == other) {
         return true;
       }
-      if (!(o instanceof Library)) {
+      if (!(other instanceof Library)) {
         return false;
       }
 
-      Library library = (Library) o;
+      Library library = (Library) other;
 
       if (flags != library.flags) {
         return false;
