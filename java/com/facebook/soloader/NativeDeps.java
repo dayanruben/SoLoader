@@ -74,6 +74,11 @@ public final class NativeDeps {
 
   public static final long CTOR_PAGE_SIZE = 4096;
 
+  // Prefetch range groups, in the order they appear on disk and are fadvised.
+  private static final int PREFETCH_GROUP_METADATA = 0;
+  private static final int PREFETCH_GROUP_CTOR = 1;
+  private static final int PREFETCH_GROUP_RODATA = 2;
+
   public static void loadDependencies(
       String soName, ElfByteChannel bc, int loadFlags, StrictMode.ThreadPolicy threadPolicy)
       throws IOException {
@@ -473,15 +478,17 @@ public final class NativeDeps {
 
   /**
    * Returns load-time prefetch ranges for a library as interleaved [offset0, length0, offset1,
-   * length1, ...] in bytes, or null if not present. Ranges are emitted in load-time access order
-   * (metadata, .rodata, then constructor .text).
+   * length1, ...] in bytes, or null if not present. Ranges stay in load-time access order
+   * (metadata, constructor .text, then .rodata); excluding a group removes its ranges without
+   * reordering the others.
    *
-   * <p>Format in the deps file: ';' introduces (start_page num_pages) integer pairs, and ':'
-   * introduces the constructor .text pairs. Constructor ranges are only included when
-   * includeConstructorRanges is set, so they can be prefetched or skipped independently.
+   * <p>Format in the deps file: ';' introduces (start_page num_pages) integer pairs for the linker
+   * metadata, ':' introduces the constructor .text pairs and ',' the .rodata pairs, in that order.
+   * A group with no ranges has no marker.
    */
   @Nullable
-  public static long[] getPrefetchRanges(String soName, boolean includeConstructorRanges) {
+  public static long[] getPrefetchRanges(
+      String soName, boolean includeConstructorRanges, boolean includeRodataRanges) {
     if (!sInitialized) {
       return null;
     }
@@ -492,15 +499,19 @@ public final class NativeDeps {
     if (offset == -1) {
       return null;
     }
-    return parsePrefetchRanges(offset, soName.length(), includeConstructorRanges);
+    return parsePrefetchRanges(
+        offset, soName.length(), includeConstructorRanges, includeRodataRanges);
   }
 
   // Parses the ranges section after ';': pairs of (start_page num_pages), with the constructor
-  // .text pairs following a ':'. Returns interleaved [offset0, length0, ...] in bytes, or null if
-  // there is no ranges section.
+  // .text pairs following a ':' and the .rodata pairs a ','. Returns interleaved [offset0, length0,
+  // ...] in bytes, or null if there is no ranges section.
   @Nullable
   private static long[] parsePrefetchRanges(
-      int libOffset, int soNameLength, boolean includeConstructorRanges) {
+      int libOffset,
+      int soNameLength,
+      boolean includeConstructorRanges,
+      boolean includeRodataRanges) {
     byte[] encodedDeps = sEncodedDeps;
     if (encodedDeps == null) {
       return null;
@@ -523,31 +534,41 @@ public final class NativeDeps {
     List<Integer> values = new ArrayList<>();
     int val = 0;
     boolean hasVal = false;
-    boolean seenCtorMarker = false;
+    int group = PREFETCH_GROUP_METADATA;
+    boolean includeGroup = true;
+    // Counted for every value in the group, included or not, so a corrupt file is still rejected.
+    int valuesInGroup = 0;
     while (pos < endPos) {
       int b = encodedDeps[pos];
       if (b == ' ') {
         if (hasVal) {
-          values.add(val);
+          if (includeGroup) {
+            values.add(val);
+          }
+          valuesInGroup++;
           val = 0;
           hasVal = false;
         }
-      } else if (b == ':') {
-        if (seenCtorMarker) {
-          return null; // more than one constructor marker: corrupt
+      } else if (b == ':' || b == ',') {
+        int nextGroup = (b == ':') ? PREFETCH_GROUP_CTOR : PREFETCH_GROUP_RODATA;
+        if (nextGroup <= group) {
+          return null; // markers repeated or out of order: corrupt
         }
         if (hasVal) {
-          values.add(val);
+          if (includeGroup) {
+            values.add(val);
+          }
+          valuesInGroup++;
           val = 0;
           hasVal = false;
         }
-        if ((values.size() % 2) != 0) {
+        if ((valuesInGroup % 2) != 0) {
           return null; // marker split a (start_page num_pages) pair
         }
-        seenCtorMarker = true;
-        if (!includeConstructorRanges) {
-          break;
-        }
+        group = nextGroup;
+        includeGroup =
+            (group == PREFETCH_GROUP_CTOR) ? includeConstructorRanges : includeRodataRanges;
+        valuesInGroup = 0;
       } else if (b >= '0' && b <= '9') {
         val = val * 10 + (b - '0');
         if (val < 0) {
@@ -560,10 +581,16 @@ public final class NativeDeps {
       pos++;
     }
     if (hasVal) {
-      values.add(val);
+      if (includeGroup) {
+        values.add(val);
+      }
+      valuesInGroup++;
+    }
+    if ((valuesInGroup % 2) != 0) {
+      return null; // trailing (start_page num_pages) pair is incomplete
     }
 
-    if (values.isEmpty() || (values.size() % 2) != 0) {
+    if (values.isEmpty()) {
       return null;
     }
 
