@@ -235,6 +235,12 @@ public class SoLoader {
    */
   public static final int SOLOADER_ENABLE_SYSTEM_FALLBACK = (1 << 14);
 
+  /**
+   * Store the backup SoSource in device-protected storage so it is available during Direct Boot.
+   * This flag has no effect unless the backup SoSource is enabled.
+   */
+  public static final int SOLOADER_USE_DEVICE_PROTECTED_STORAGE_FOR_BACKUP_SOSOURCE = (1 << 15);
+
   @GuardedBy("sSoSourcesLock")
   private static int sFlags;
 
@@ -569,8 +575,21 @@ public class SoLoader {
       return;
     }
 
-    BackupSoSource backupSoSource =
-        new BackupSoSource(context, SO_STORE_NAME_MAIN, !implicitDependencies);
+    BackupSoSource backupSoSource;
+    if ((sFlags & SOLOADER_USE_DEVICE_PROTECTED_STORAGE_FOR_BACKUP_SOSOURCE) != 0
+        && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+      Context backupContext =
+          context.isDeviceProtectedStorage()
+              ? context
+              : context.createDeviceProtectedStorageContext();
+      backupSoSource =
+          new BackupSoSource(
+              backupContext,
+              new File(backupContext.getDataDir(), SO_STORE_NAME_MAIN),
+              !implicitDependencies);
+    } else {
+      backupSoSource = new BackupSoSource(context, SO_STORE_NAME_MAIN, !implicitDependencies);
+    }
     soSources.add(0, backupSoSource);
   }
 
